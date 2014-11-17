@@ -17,11 +17,7 @@ module RailsAdminImport
       def import_fields
         fields = []  
 
-        fields = self.new.attributes.keys.collect { |key| key.to_sym }
-  
-        self.belongs_to_fields.each do |key|
-          fields.delete("#{key}_id".to_sym)
-        end
+        fields = self.attribute_names.collect { |key| key.to_sym }
   
         self.file_fields.each do |key|
           fields.delete("#{key}_file_name".to_sym)
@@ -39,18 +35,23 @@ module RailsAdminImport
       end
  
       def belongs_to_fields
-        attrs = self.reflections.select { |k, v| v.macro == :belongs_to }.keys
+        attrs = []
+        if Object.const_defined?("ActiveRecord")
+          attrs = self.reflections.select { |k, v| v.macro == :belongs_to }.keys
+        end
+        attrs - RailsAdminImport.config(self).excluded_fields 
         attrs - RailsAdminImport.config(self).excluded_fields 
       end
   
       def many_fields
         attrs = []
-        self.reflections.each do |k, v|
-          if [:has_and_belongs_to_many, :has_many].include?(v.macro)
-            attrs << k.to_s.singularize.to_sym
+        if Object.const_defined?("ActiveRecord")
+          self.reflections.each do |k, v|
+            if [:has_and_belongs_to_many, :has_many].include?(v.macro)
+              attrs << k.to_s.singularize.to_sym
+            end
           end
         end
-
         attrs - RailsAdminImport.config(self).excluded_fields 
       end 
   
@@ -136,8 +137,9 @@ module RailsAdminImport
   
       def import_initialize(row, map, update)
         new_attrs = {}
-        self.import_fields.each do |key|
-          new_attrs[key] = row[map[key]] if map[key]
+        # DP: remove this restriction, because we want to be able to import dynamic attributes into Mongoid documents
+        map.each_pair do |key,v|
+          new_attrs[key] = row[v]   # DP if map[key]
         end
 
         item = nil
@@ -211,8 +213,4 @@ module RailsAdminImport
       end
     end
   end
-end
-
-class ActiveRecord::Base
-  include RailsAdminImport::Import
 end
